@@ -1,58 +1,84 @@
 """
 Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 
-  * Rules: "@rule name = expression"
-  * Alternation: infix |
-  * Sequence: infix &
-  * Positive lookahead: prefix +
-  * Negative lookahead: prefix -
-  * Zero or one time: postfix [?]
-  * Any number of times: postfix [*]
-  * One or more times: postfix [+]
-  * Exactly m times: postfix [m] (where m is an integer)
-  * Between m and n times inclusive: postfix [m:n]
-  * At most n times: postfix [0:n]
-  * At least m times: postfix [m:end]
-  * Terminals: r"regex", "string"
-  * Semantics: expression |> function
+* Rules: `@rule name = expression`
+* Alternation: infix `|`
+* Sequence: infix `&`
+* Positive lookahead: prefix `+`
+* Negative lookahead: prefix `-`
+* Zero or one time: postfix `[?]` (≡ `[0:1]`)
+* Any number of times: postfix `[*]` (≡ `[0:end]`)
+* One or more times: postfix `[+]` (≡ `[1:end]`)
+* Exactly `m` times: postfix `[m]` (≡ `[m:m]`) (where m is an integer)
+* Between `m` and `n` times inclusive: postfix `[m:n]`
+* At most `n` times: postfix `[0:n]`
+* At least `m` times: postfix `[m:end]`
+* Terminals: `r"regex"`, `"string"`
+  * Extra regex flags: `p` is for punctuation, and eats whitespace (`\\s*`)
+    after the match; `w` is for word, and implies `p`, but also makes sure
+    match boundaries are word boundaries (`\\b`). Values passed to semantics
+    functions exclude eaten whitespace.
+* Semantics: `expression |> unary_function`
+  * or `expression > nary_function` to interpolate args like ParserCombinator
+    does.
 
 Put another way:
 
-    using PEG
-    @rule grammar = "using PEG\\n" & (rule & "\\n")[*]
-    @rule rule = "@rule" & sp & nonterminal & sp & "=" & sp & alt
-    @rule alt = seq & ("|" & sp & seq)[*]
-    @rule seq = item & (sp & "&" & sp & item)[*] & sp & ("|>" & sp & julia_function)[?]
-    @rule item = lookahead | counted
-    @rule lookahead = "(" & (r"[+-]") & sp & seq & ")"
-    @rule counted = single & (sp & count)[?]
-    @rule count = range | "[" & sp & (r"[\\?\\*\\+]") & sp & "]"
-    @rule range = "[" & sp & integer & (sp & ":" & sp & (integer | "end"))[?] & sp & "]"
-    @rule integer = r"\\d+"
-    @rule single = parens | terminal | nonterminal
-    @rule parens = "(" & sp & alt & ")"
-    @rule nonterminal = r"\\pL\\w+"
-    @rule terminal = julia_regex | julia_string
-    @rule sp = r"\\s*"
+```julia
+using PEG
+@rule grammar = "using PEG\\n" & rule[*]
+@rule rule = r"@rule"p & nonterminal & r"="p & alt
+@rule alt = seq & (r"\\|"p & seq)[*]
+@rule seq = item & (r"&"p & item)[*] & (r"|>"p & julia_function)[?]
+@rule item = lookahead | counted
+@rule lookahead = r"\\("p & (r"[+-]"p) & seq & r"\\)"p
+@rule counted = single & (count)[?]
+@rule count = range | r"\\["p & (r"[\\?\\*\\+]"p) & r"]"p
+@rule range = r"\\["p & integer & (r":"p & (integer | r"end"w))[?] & r"]"p
+@rule integer = r"\\d+"w
+@rule single = parens | terminal | nonterminal
+@rule parens = r"\\("p & alt & r"\\)"p
+@rule nonterminal = r"\\pL\\w+"w
+@rule terminal = regex | string & r"\\s*"
+@rule regex = r"\\br" & string & r"[impswx]*\\s*"
+@rule string = r"\\"(\\\\.|[^\\"])*\\""
+@rule julia_function = # left as an exercise ;)
+```
 
 Each rule defines a parsing function with the following signature:
 
     nonterminal{T<:AbstractString}(input::T, cache=PEG.Cache())::
       Union{Void,Tuple{Any,SubString}}
 
-The Any part of the return value is the abstract syntax tree, while the
-AbstractString is the remaining input after the parsed portion. If parsing
-fails, nothing is returned.
+The `Any` part of the return value is the abstract syntax tree, while the
+`SubString` is the remaining input after the parsed portion. If parsing fails,
+`nothing` is returned.
+
+Call `PEG.setdebug!()` to have debugging information printed during parsing.
+Call `PEG.setdebug!(false)` to turn it off again.
 """
 module PEG
 export @rule
+
+global debug = false
+function setdebug!(val::Bool=true)
+  global debug = val
+end
 
 typealias Cache Dict{Tuple{Symbol,Int},Union{Void,Tuple{Any,SubString}}}
 
 function cache_rule(sym::Symbol, fn::Function, input::SubString, cache::Cache)
   local key = (sym, length(input))
   haskey(cache, key) && return cache[key]
-  return (cache[key] = fn(input, cache))
+  if debug
+    cache[key] = fn(input, cache)
+    if cache[key] != nothing
+      println(" "^length(stacktrace()) * "$sym matched " * string(length(input)) * ":" * string(length(cache[key][2])+1) * " bytes from end of input, returning " * string(cache[key][1]))
+    end
+    return cache[key]
+  else
+    return (cache[key] = fn(input, cache))
+  end
 end
 
 # terminal ""
@@ -83,14 +109,37 @@ to_rule(head::Union{Type{Type{:call}},Type{Type{:macrocall}}}, name::Symbol, arg
   to_rule(head, Type{name}, args...)
 to_rule(head, args...) = error("can't convert $head expression to PEG rule; args=$args")
 
+"Return (a copy of) regex flags with flag removed, and a boolean indicating whether the flag was there in the first place."
+function remove_re_flag{T<:AbstractString}(flags::T, flag::Char)
+  local i = search(flags, flag)
+  if i == 0
+    (flags, false)
+  else
+    (flags[1:prevind(flags, i)] * flags[nextind(flags, i):end], true)
+  end
+end
+
 # terminal r""
-function to_rule(::Type{Type{:macrocall}}, ::Type{Type{Symbol("@r_str")}}, str::String, opts...)
-  re = Regex("^($str)", opts...)
+function to_rule(::Type{Type{:macrocall}}, ::Type{Type{Symbol("@r_str")}}, str::String, flags...)
+  if length(flags) == 0
+    flags = ""
+  else
+    flags = flags[1]
+  end
+  # p = punctuation; allows whitespace after the match
+  local p
+  flags, p = remove_re_flag(flags, 'p')
+  # w = word; ensures both sides of the match are word boundaries; implies p
+  local w
+  flags, w = remove_re_flag(flags, 'w')
+  p = p || w
+  str = "^" * (w ? "\\b" : "") * "($str)" * (w ? "\\b" : "") * (p ? "\\s*" : "")
+  re = Regex(str, flags)
   local sym = gensym(string(re))
   (input, cache)->cache_rule(sym, (input, cache)->begin
     local m = match(re, input)
     m == nothing && return
-    (m.match, input[length(m.match)+1:end])
+    (m.captures[1], input[length(m.match)+1:end])
   end, input, cache)
 end
 
@@ -188,6 +237,18 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:|>}}, pe, fn)
   end, input, cache))
 end
 
+function to_rule(::Type{Type{:call}}, ::Type{Type{:>}}, pe, fn)
+  pe = to_rule(pe)
+  local sym = gensym(:|>)
+  :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
+    local m = ($pe)(input, cache)
+    m == nothing && return nothing
+    local pe_result
+    pe_result, input = m
+    ($(esc(fn))(pe_result...), input)
+  end, input, cache))
+end
+
 # alternation
 function to_rule(::Type{Type{:call}}, ::Type{Type{:|}}, a, b)
   local alt = map(to_rule, [flatten_op(a, :|); b])
@@ -196,9 +257,9 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:|}}, a, b)
     local item
     for item ∈ [$(alt...)]
       local m = item(input, cache)
-      m == nothing && return
-      m
+      m == nothing || return m
     end
+    return nothing
   end, input, cache))
 end
 

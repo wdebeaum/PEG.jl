@@ -1,5 +1,10 @@
 using PEG
 using Base.Test
 
-# write your own tests here
-@test 1 == 2
+include("./calculator.jl")
+include("./meta.jl")
+# not yet covered:
+# - lookahead
+# - >>>
+# - [m]
+# - [+]

@@ -18,9 +18,9 @@ Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
     after the match; `w` is for word, and implies `p`, but also makes sure
     match boundaries are word boundaries (`\\b`). Values passed to semantics
     functions exclude eaten whitespace.
-* Semantics: `expression |> unary_function`
-  * or `expression > nary_function` to interpolate args like ParserCombinator
-    does.
+* Semantics: `expression >> unary_function` (like ParserCombinator's `|>`)
+  * or `expression >>> nary_function` to interpolate args (like
+    ParserCombinator's `>`).
 
 Put another way:
 
@@ -29,7 +29,7 @@ using PEG
 @rule grammar = "using PEG\\n" & rule[*]
 @rule rule = r"@rule"p & nonterminal & r"="p & alt
 @rule alt = seq & (r"\\|"p & seq)[*]
-@rule seq = item & (r"&"p & item)[*] & (r"|>"p & julia_function)[?]
+@rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[?]
 @rule item = lookahead | counted
 @rule lookahead = r"\\("p & (r"[+-]"p) & seq & r"\\)"p
 @rule counted = single & (count)[?]
@@ -225,9 +225,9 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:&}}, a, b)
 end
 
 # semantics
-function to_rule(::Type{Type{:call}}, ::Type{Type{:|>}}, pe, fn)
+function to_rule(::Type{Type{:call}}, ::Type{Type{:>>}}, pe, fn)
   pe = to_rule(pe)
-  local sym = gensym(:|>)
+  local sym = gensym(:>>)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
     local m = ($pe)(input, cache)
     m == nothing && return nothing
@@ -237,9 +237,9 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:|>}}, pe, fn)
   end, input, cache))
 end
 
-function to_rule(::Type{Type{:call}}, ::Type{Type{:>}}, pe, fn)
+function to_rule(::Type{Type{:call}}, ::Type{Type{:>>>}}, pe, fn)
   pe = to_rule(pe)
-  local sym = gensym(:|>)
+  local sym = gensym(:>>>)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
     local m = ($pe)(input, cache)
     m == nothing && return nothing
@@ -279,27 +279,3 @@ macro rule(assignment::Expr)
 end
 
 end
-"""
-Test code:
-
-include("/home/will/.julia/v0.5/SDL2/src/PEG.jl")
-using PEG
-
-function do_op(x)
-  local v
-  local op_v_pairs
-  v, op_v_pairs = x
-  for op_v ∈ op_v_pairs
-    op, v2 = op_v
-    v = eval(Symbol(op))(v, v2)
-  end
-  v
-end
-
-@rule num = r"\\d+" |> x->parse(Int, x)
-@rule mul = num & (r"[/*]" & num)[*] |> do_op
-@rule add = mul & (r"[+-]" & mul)[*] |> do_op
-
-@assert add("2+3*5") == (17, "")
-
-"""

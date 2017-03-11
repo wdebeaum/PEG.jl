@@ -4,9 +4,9 @@ Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
   * Rules: "@rule name = expression"
   * Alternation: infix |
   * Sequence: infix &
-  * Positive lookahead: (+ expression)
-  * Negative lookahead: (- expression)
-  * Zero or one time: postfix [?] (parens required)
+  * Positive lookahead: prefix +
+  * Negative lookahead: prefix -
+  * Zero or one time: postfix [?]
   * Any number of times: postfix [*]
   * One or more times: postfix [+]
   * Exactly m times: postfix [m] (where m is an integer)

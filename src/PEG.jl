@@ -148,12 +148,12 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:-}}, fn)
 end
 
 "Given e.g. x=:(((a op b) op c) op d), return [a,b,c,d]."
-flatten_op(x, op::Symbol) = [x]
+flatten_op(x, op::Symbol) = Any[x]
 function flatten_op(x::Expr, op::Symbol)
   if x.head == :call && x.args[1] == op
     push!(flatten_op(x.args[2], op), x.args[3])
   else
-    [x]
+    Any[x]
   end
 end
 

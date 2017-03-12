@@ -359,7 +359,7 @@ function parse_whole{T<:AbstractString}(rule::Function, input::T)
     local line_num = length(before)
     local column_num = length(before[end])
     local line = before[end] * after
-    local message = "On line $line_num, at column $column_num:\n$line\n" * " "^(column_num-1) * "^ here\nexpected one of the following: " * join(last_keys, ", ") * "\n"
+    local message = "On line $line_num, at column $column_num:\n$line\n" * " "^Int(clamp(column_num-1, 0, Inf)) * "^ here\nexpected one of the following: " * join(last_keys, ", ") * "\n"
     debug && print(message)
     throw(ParseError(message))
   else # parse succeeded

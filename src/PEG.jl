@@ -58,22 +58,32 @@ Call `PEG.setdebug!()` to have debugging information printed during parsing.
 Call `PEG.setdebug!(false)` to turn it off again.
 """
 module PEG
-export @rule
+export @rule, parse_whole, squash_ast
 
 global debug = false
 function setdebug!(val::Bool=true)
   global debug = val
 end
 
+"""
+A Cache maps from (rule name or gensym, input string length remaining) to
+either nothing or (parsed value, remaining input substring) (which is what rule
+functions return).
+"""
 typealias Cache Dict{Tuple{Symbol,Int},Union{Void,Tuple{Any,SubString}}}
 
 function cache_rule(sym::Symbol, fn::Function, input::SubString, cache::Cache)
   local key = (sym, length(input))
   haskey(cache, key) && return cache[key]
   if debug
+    if !ismatch(r"^##", string(sym))
+      println(" "^length(stacktrace()) * string(sym))
+    end
     cache[key] = fn(input, cache)
     if cache[key] != nothing
       println(" "^length(stacktrace()) * "$sym matched " * string(length(input)) * ":" * string(length(cache[key][2])+1) * " bytes from end of input, returning " * string(cache[key][1]))
+#    else
+#      println(" "^length(stacktrace()) * string(sym) * " failed to match " * string(length(input)) * " bytes from end of input")
     end
     return cache[key]
   else
@@ -108,6 +118,10 @@ to_rule(expr::Expr) = to_rule(Type{expr.head}, expr.args...)
 to_rule(head::Union{Type{Type{:call}},Type{Type{:macrocall}}}, name::Symbol, args...) =
   to_rule(head, Type{name}, args...)
 to_rule(head, args...) = error("can't convert $head expression to PEG rule; args=$args")
+
+# variant of to_rule(::Symbol) for qualified rule references
+to_rule(::Type{Type{:.}}, args...) =
+  :((input, cache) -> $(esc(Expr(:., args...)))(input, cache))
 
 "Return (a copy of) regex flags with flag removed, and a boolean indicating whether the flag was there in the first place."
 function remove_re_flag{T<:AbstractString}(flags::T, flag::Char)
@@ -224,6 +238,11 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:&}}, a, b)
   end, input, cache))
 end
 
+"Singleton value that semantics functions may return to cause the parsing
+expression they were called from to fail, e.g. `return Failure()`."
+type Failure
+end
+
 # semantics
 function to_rule(::Type{Type{:call}}, ::Type{Type{:>>}}, pe, fn)
   pe = to_rule(pe)
@@ -233,7 +252,9 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:>>}}, pe, fn)
     m == nothing && return nothing
     local pe_result
     pe_result, input = m
-    ($(esc(fn))(pe_result), input)
+    fn_result = $(esc(fn))(pe_result)
+    fn_result == Failure() && return nothing
+    (fn_result, input)
   end, input, cache))
 end
 
@@ -245,7 +266,9 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:>>>}}, pe, fn)
     m == nothing && return nothing
     local pe_result
     pe_result, input = m
-    ($(esc(fn))(pe_result...), input)
+    fn_result = $(esc(fn))(pe_result...) # "..." is the only difference from ^^^
+    fn_result == Failure() && return nothing
+    (fn_result, input)
   end, input, cache))
 end
 
@@ -263,6 +286,13 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:|}}, a, b)
   end, input, cache))
 end
 
+"""
+    @rule name = parsing_expression...
+
+Defines a single rule in a parsing expression grammar as a function. See the
+documentation of the PEG module for a description of parsing expression
+grammars, and the type and usage of the rule functions defined using `@rule`.
+"""
 macro rule(assignment::Expr)
   assignment.head == :(=) || error("expected = Expr, but got $assignment")
   local name
@@ -276,6 +306,85 @@ macro rule(assignment::Expr)
       local sym = Symbol($(string(name)))
       cache_rule(sym, $value_fn, input, cache)
     end)
+end
+
+"""
+    parse_whole(rule, input)
+
+Parse the whole `input` string as one instance of the given `rule`. This
+differs from just calling the `rule` itself on the `input` in a couple
+important ways:
+
+* When parsing succeeds, `parse_whole` returns only the parsed value, while
+  `rule` returns a Tuple of the parsed value and the remaining unparsed input.
+* When parsing fails, `parse_whole` throws an exception, with information on
+  what failed to match starting at the latest point in the string that any
+  parsing expression matched up to. `rule` just returns `nothing`.
+"""
+function parse_whole{T<:AbstractString}(rule::Function, input::T)
+  local cache = Cache()
+  local m = rule(input, cache)
+  if m == nothing # failed to parse
+    # find the last index we tried to parse anything starting at, and all the
+    # cache keys for the expressions we tried to parse there
+    # FIXME plain strings aren't cached, so we'll miss them as keys
+    local last_index = 0
+    local last_keys = Symbol[]
+    for pair ∈ cache
+      if pair[1][2] < last_index
+	last_index = pair[1][2]
+	last_keys = [pair[1][1]]
+      elseif pair[1][2] == last_index
+        push!(last_keys, pair[1][1])
+      end
+    end
+    last_index = length(input) - last_index +1 # ugh, backwards 1-based indexing
+    # convert regex gensym keys to something more readable, remove other
+    # gensyms, and convert everything to strings
+    last_keys = map(x->begin
+      local s = string(x)
+      local m = match(r"^##(r[^#]+)#\d+$", s)
+      if m != nothing
+	m.captures[1]
+      elseif ismatch(r"^##", s)
+	nothing
+      else
+	s
+      end
+    end, last_keys)
+    filter!(x->(x != nothing), last_keys)
+    # translate the index into line and column and get the text on the line
+    local before = split(input[1:last_index-1], r"\r\n|\n\r|\n|\r")
+    local after = replace(input[last_index:end], r"[\r\n].*", "")
+    local line_num = length(before)
+    local column_num = length(before[end])
+    local line = before[end] * after
+    local message = "On line $line_num, at column $column_num:\n$line\n" * " "^(column_num-1) * "^ here\nexpected one of the following: " * join(last_keys, ", ") * "\n"
+    debug && print(message)
+    throw(ParseError(message))
+  else # parse succeeded
+    m[1]
+  end
+end
+
+"""
+    squash_ast(x)
+
+Given an ast returned by a grammar with no semantics, return a simplified
+version, such that there are no `nothing`s, and no `Any[]`s with exactly zero
+or one element.
+"""
+squash_ast(x) = x
+function squash_ast(children::Array{Any,1})
+  squashed_children = map(squash_ast, children)
+  filter!(x->(x != nothing), squashed_children)
+  if length(squashed_children) == 0
+    nothing
+  elseif length(squashed_children) == 1
+    squashed_children[1]
+  else
+    squashed_children
+  end
 end
 
 end

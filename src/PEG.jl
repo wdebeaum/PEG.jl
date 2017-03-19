@@ -2,12 +2,12 @@
 Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 
 * Rules: `@rule name = expression`
-* Alternation: infix `|`
+* Choice: infix `|`
 * Sequence: infix `&`
 * Positive lookahead: prefix `+`
 * Negative lookahead: prefix `-`
-* Zero or one time: postfix `[?]` (≡ `[0:1]`)
-* Any number of times: postfix `[*]` (≡ `[0:end]`)
+* Option (zero or one time): postfix `[?]` (≡ `[0:1]`)
+* Zero or more times: postfix `[*]` (≡ `[0:end]`)
 * One or more times: postfix `[+]` (≡ `[1:end]`)
 * Exactly `m` times: postfix `[m]` (≡ `[m:m]`) (where m is an integer)
 * Between `m` and `n` times inclusive: postfix `[m:n]`
@@ -27,8 +27,8 @@ Put another way:
 ```julia
 using PEG
 @rule grammar = "using PEG\\n" & rule[*]
-@rule rule = r"@rule"p & nonterminal & r"="p & alt
-@rule alt = seq & (r"\\|"p & seq)[*]
+@rule rule = r"@rule"p & nonterminal & r"="p & choice
+@rule choice = seq & (r"\\|"p & seq)[*]
 @rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[?]
 @rule item = lookahead | counted
 @rule lookahead = r"\\("p & (r"[+-]"p) & seq & r"\\)"p
@@ -37,7 +37,7 @@ using PEG
 @rule range = r"\\["p & integer & (r":"p & (integer | r"end"w))[?] & r"]"p
 @rule integer = r"\\d+"w
 @rule single = parens | terminal | nonterminal
-@rule parens = r"\\("p & alt & r"\\)"p
+@rule parens = r"\\("p & choice & r"\\)"p
 @rule nonterminal = r"\\pL\\w+"w
 @rule terminal = regex | string & r"\\s*"
 @rule regex = r"\\br" & string & r"[impswx]*\\s*"
@@ -272,13 +272,13 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:>>>}}, pe, fn)
   end, input, cache))
 end
 
-# alternation
+# choice
 function to_rule(::Type{Type{:call}}, ::Type{Type{:|}}, a, b)
-  local alt = map(to_rule, [flatten_op(a, :|); b])
+  local choice = map(to_rule, [flatten_op(a, :|); b])
   local sym = gensym(:|)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
     local item
-    for item ∈ [$(alt...)]
+    for item ∈ [$(choice...)]
       local m = item(input, cache)
       m == nothing || return m
     end

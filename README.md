@@ -81,7 +81,7 @@ PEG...
   * have `Empty(x)`/`@e_str`. Use semantics functions to discard values.
   * have `Dot()`. Use `r"."`.
   * have `Eos()`. Use `parse_whole`.
-  * parse streams. Use `open(x->parse_whole(rule, x), args...)`.
+  * parse streams. Use `open(x->parse_whole(rule, readstring(x)), args...)`.
   * include parsers for two random languages.
 * has nicer syntax:
   * Operator precedence makes sense. Tight to loose, the operators are: postfix

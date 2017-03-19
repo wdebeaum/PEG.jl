@@ -1,3 +1,5 @@
+VERSION >= v"0.4" && __precompile__()
+
 """
 Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 

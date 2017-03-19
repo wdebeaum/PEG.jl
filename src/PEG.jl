@@ -23,6 +23,11 @@ Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 * Semantics: `expression >> unary_function` (like ParserCombinator's `|>`)
   * or `expression >>> nary_function` to interpolate args (like
     ParserCombinator's `>`).
+  * Returning the special singleton value `PEG.Failure()` from a semantics
+    function causes the parsing expression it's attached to to fail (return
+    `nothing` instead of a tuple). Returning `nothing` from a semantics
+    function is not special; it just makes the first part of the tuple
+    `nothing`. See the parsing function signature below.
 
 Put another way:
 
@@ -49,20 +54,31 @@ using PEG
 
 Each rule defines a parsing function with the following signature:
 
-    nonterminal{T<:AbstractString}(input::T, cache=PEG.Cache())::
-      Union{Void,Tuple{Any,SubString}}
+```julia
+nonterminal{T<:AbstractString}(input::T, cache=PEG.Cache())::
+  Union{Void,Tuple{Any,SubString}}
+```
 
 The `Any` part of the return value is the abstract syntax tree, while the
 `SubString` is the remaining input after the parsed portion. If parsing fails,
 `nothing` is returned.
 
+While you can use rules defined in this way directly, it might be more
+convenient to use the functions `parse_next(rule, input; whole=false)` or
+`parse_whole(rule, input)`. See their documentation for more information.
+
 Call `PEG.setdebug!()` to have debugging information printed during parsing.
 Call `PEG.setdebug!(false)` to turn it off again.
 """
 module PEG
-export @rule, parse_whole, squash_ast
+export @rule, parse_next, parse_whole, squash_ast
 
 global debug = false
+"""
+    setdebug!(val=true)
+
+Enable or disable printing of debugging information.
+"""
 function setdebug!(val::Bool=true)
   global debug = val
 end
@@ -125,7 +141,11 @@ to_rule(head, args...) = error("can't convert $head expression to PEG rule; args
 to_rule(::Type{Type{:.}}, args...) =
   :((input, cache) -> $(esc(Expr(:., args...)))(input, cache))
 
-"Return (a copy of) regex flags with flag removed, and a boolean indicating whether the flag was there in the first place."
+"""
+    remove_re_flag(flags, flag)
+
+Return (a copy of) regex flags with flag removed, and a boolean indicating whether the flag was there in the first place.
+"""
 function remove_re_flag{T<:AbstractString}(flags::T, flag::Char)
   local i = search(flags, flag)
   if i == 0
@@ -311,22 +331,24 @@ macro rule(assignment::Expr)
 end
 
 """
-    parse_whole(rule, input)
+    parse_next(rule, input; whole=false)
 
-Parse the whole `input` string as one instance of the given `rule`. This
-differs from just calling the `rule` itself on the `input` in a couple
-important ways:
+Parse a prefix of the `input` string as one instance of the given `rule`. This
+differs from just calling the `rule` itself on the `input` in a few important
+ways:
 
-* When parsing succeeds, `parse_whole` returns only the parsed value, while
+* When parsing succeeds, `parse_next` returns only the parsed value, while
   `rule` returns a Tuple of the parsed value and the remaining unparsed input.
-* When parsing fails, `parse_whole` throws an exception, with information on
+* When parsing fails, `parse_next` throws an exception, with information on
   what failed to match starting at the latest point in the string that any
   parsing expression matched up to. `rule` just returns `nothing`.
+* When `whole=true`, parsing only succeeds if the whole input is consumed, i.e.
+  the second value in the tuple that `rule` returns is `""`.
 """
-function parse_whole{T<:AbstractString}(rule::Function, input::T)
+function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
   local cache = Cache()
   local m = rule(input, cache)
-  if m == nothing # failed to parse
+  if m == nothing || (whole && m[2] != "") # failed to parse
     # find the last index we tried to parse anything starting at, and all the
     # cache keys for the expressions we tried to parse there
     # FIXME plain strings aren't cached, so we'll miss them as keys
@@ -368,6 +390,9 @@ function parse_whole{T<:AbstractString}(rule::Function, input::T)
     m[1]
   end
 end
+
+"    parse_whole(rule, input) = parse_next(rule, input; whole=true)"
+parse_whole(rule, input) = parse_next(rule, input; whole=true)
 
 """
     squash_ast(x)

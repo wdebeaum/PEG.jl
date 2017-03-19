@@ -321,7 +321,7 @@ macro rule(assignment::Expr)
   local value_expr
   name, value_expr = assignment.args
   local value_fn = to_rule(value_expr)
-  :(function $(esc(name)){T<:AbstractString}(input::T, cache::Cache=Cache())
+  :(@Base.__doc__ function $(esc(name)){T<:AbstractString}(input::T, cache::Cache=Cache())
       if !isa(input, SubString)
 	input = SubString(input, 1, length(input))
       end

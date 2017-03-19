@@ -1,6 +1,6 @@
 VERSION >= v"0.4" && __precompile__()
 
-"""
+doc"""
 Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 
 * Rules: `@rule name = expression`
@@ -16,9 +16,9 @@ Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 * At most `n` times: postfix `[0:n]`
 * At least `m` times: postfix `[m:end]`
 * Terminals: `r"regex"`, `"string"`
-  * Extra regex flags: `p` is for punctuation, and eats whitespace (`\\s*`)
+  * Extra regex flags: `p` is for punctuation, and eats whitespace (`\s*`)
     after the match; `w` is for word, and implies `p`, but also makes sure
-    match boundaries are word boundaries (`\\b`). Values passed to semantics
+    match boundaries are word boundaries (`\b`). Values passed to semantics
     functions exclude eaten whitespace.
 * Semantics: `expression >> unary_function` (like ParserCombinator's `|>`)
   * or `expression >>> nary_function` to interpolate args (like
@@ -33,22 +33,22 @@ Put another way:
 
 ```julia
 using PEG
-@rule grammar = "using PEG\\n" & rule[*]
+@rule grammar = "using PEG\n" & rule[*]
 @rule rule = r"@rule"p & nonterminal & r"="p & choice
-@rule choice = seq & (r"\\|"p & seq)[*]
+@rule choice = seq & (r"\|"p & seq)[*]
 @rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[?]
 @rule item = lookahead | counted
-@rule lookahead = r"\\("p & (r"[+-]"p) & seq & r"\\)"p
+@rule lookahead = r"\("p & (r"[+-]"p) & seq & r"\)"p
 @rule counted = single & (count)[?]
-@rule count = range | r"\\["p & (r"[\\?\\*\\+]"p) & r"]"p
-@rule range = r"\\["p & integer & (r":"p & (integer | r"end"w))[?] & r"]"p
-@rule integer = r"\\d+"w
+@rule count = range | r"\["p & (r"[\?\*\+]"p) & r"]"p
+@rule range = r"\["p & integer & (r":"p & (integer | r"end"w))[?] & r"]"p
+@rule integer = r"\d+"w
 @rule single = parens | terminal | nonterminal
-@rule parens = r"\\("p & choice & r"\\)"p
-@rule nonterminal = r"\\pL\\w+"w
-@rule terminal = regex | string & r"\\s*"
-@rule regex = r"\\br" & string & r"[impswx]*\\s*"
-@rule string = r"\\"(\\\\.|[^\\"])*\\""
+@rule parens = r"\("p & choice & r"\)"p
+@rule nonterminal = r"\pL\w+"w
+@rule terminal = regex | string & r"\s*"
+@rule regex = r"\br" & string & r"[impswx]*\s*"
+@rule string = r"\"(\\.|[^\"])*\""
 @rule julia_function = # left as an exercise ;)
 ```
 

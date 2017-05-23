@@ -1,3 +1,7 @@
+[![Build Status](https://travis-ci.org/wdebeaum/PEG.jl.png)](https://travis-ci.org/wdebeaum/PEG.jl)
+
+[![PEG](http://pkg.julialang.org/badges/PEG_0.5.svg)](http://pkg.julialang.org/?pkg=PEG&ver=0.5)
+
 # PEG
 
 Define a

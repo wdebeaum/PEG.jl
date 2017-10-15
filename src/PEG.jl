@@ -88,7 +88,7 @@ A Cache maps from (rule name or gensym, input string length remaining) to
 either nothing or (parsed value, remaining input substring) (which is what rule
 functions return).
 """
-typealias Cache Dict{Tuple{Symbol,Int},Union{Void,Tuple{Any,SubString}}}
+const Cache = Dict{Tuple{Symbol,Int},Union{Void,Tuple{Any,SubString}}}
 
 function cache_rule(sym::Symbol, fn::Function, input::SubString, cache::Cache)
   local key = (sym, length(input))

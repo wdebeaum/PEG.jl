@@ -352,7 +352,7 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
     # find the last index we tried to parse anything starting at, and all the
     # cache keys for the expressions we tried to parse there
     # FIXME plain strings aren't cached, so we'll miss them as keys
-    local last_index = endof(input)
+    local last_index = nextind(input,endof(input)) # start off the end of input
     local last_keys = Symbol[]
     for pair ∈ cache
       if pair[1][2] < last_index
@@ -362,7 +362,7 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
         push!(last_keys, pair[1][1])
       end
     end
-    last_index = endof(input) - last_index +1 # ugh, backwards 1-based indexing
+    last_index = nextind(input,endof(input)) - last_index # ugh, backwards 1-based indexing
     # convert regex gensym keys to something more readable, remove other
     # gensyms, and convert everything to strings
     last_keys = map(x->begin

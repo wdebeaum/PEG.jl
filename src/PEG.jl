@@ -99,7 +99,7 @@ function cache_rule(sym::Symbol, fn::Function, input::SubString, cache::Cache)
     end
     cache[key] = fn(input, cache)
     if cache[key] != nothing
-      println(" "^length(stacktrace()) * "$sym matched " * string(endof(input)) * ":" * string(endof(cache[key][2])+1) * " bytes from end of input, returning " * string(cache[key][1]))
+      println(" "^length(stacktrace()) * "$sym matched " * string(endof(input)) * ":" * string(nextind(cache[key][2],endof(cache[key][2]))) * " bytes from end of input, returning " * string(cache[key][1]))
 #    else
 #      println(" "^length(stacktrace()) * string(sym) * " failed to match " * string(endof(input)) * " bytes from end of input")
     end
@@ -114,7 +114,7 @@ function to_rule(str::AbstractString)
   # not cached because I'm guessing startswith is probably faster
   (input, cache)->begin
     if startswith(input, str)
-      (str, input[endof(str)+1:end])
+      (str, input[nextind(str,endof(str)):end])
     end
   end
 end
@@ -175,7 +175,7 @@ function to_rule(::Type{Type{:macrocall}}, ::Type{Type{Symbol("@r_str")}}, str::
   (input, cache)->cache_rule(sym, (input, cache)->begin
     local m = match(re, input)
     m == nothing && return
-    (m.captures[1], input[endof(m.match)+1:end])
+    (m.captures[1], input[nextind(m.match,endof(m.match)):end])
   end, input, cache)
 end
 
@@ -378,7 +378,7 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
     end, last_keys)
     filter!(x->(x != nothing), last_keys)
     # translate the index into line and column and get the text on the line
-    local before = split(input[1:last_index-1], r"\r\n|\n\r|\n|\r")
+    local before = split(input[1:prevind(input,last_index)], r"\r\n|\n\r|\n|\r")
     local after = replace(input[last_index:end], r"[\r\n].*", "")
     local line_num = length(before)
     local column_num = length(before[end]) + 1

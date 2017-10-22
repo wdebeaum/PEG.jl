@@ -20,3 +20,9 @@ using Base.Test
 @test add("2 + 3 * 5") == (17, "")
 @test add("2 * 3 + 5") == (11, "")
 @test add("(2 + 3) * 5") == (25, "")
+
+@test try
+  parse_whole(add, "1 + 2 ^ 3")
+catch x
+  split(x.msg, "\n")[1]
+end == "On line 1, at column 7 (byte 7):"

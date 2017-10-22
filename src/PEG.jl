@@ -91,7 +91,7 @@ functions return).
 const Cache = Dict{Tuple{Symbol,Int},Union{Void,Tuple{Any,SubString}}}
 
 function cache_rule(sym::Symbol, fn::Function, input::SubString, cache::Cache)
-  local key = (sym, length(input))
+  local key = (sym, endof(input))
   haskey(cache, key) && return cache[key]
   if debug
     if !ismatch(r"^##", string(sym))
@@ -99,9 +99,9 @@ function cache_rule(sym::Symbol, fn::Function, input::SubString, cache::Cache)
     end
     cache[key] = fn(input, cache)
     if cache[key] != nothing
-      println(" "^length(stacktrace()) * "$sym matched " * string(length(input)) * ":" * string(length(cache[key][2])+1) * " bytes from end of input, returning " * string(cache[key][1]))
+      println(" "^length(stacktrace()) * "$sym matched " * string(endof(input)) * ":" * string(endof(cache[key][2])+1) * " bytes from end of input, returning " * string(cache[key][1]))
 #    else
-#      println(" "^length(stacktrace()) * string(sym) * " failed to match " * string(length(input)) * " bytes from end of input")
+#      println(" "^length(stacktrace()) * string(sym) * " failed to match " * string(endof(input)) * " bytes from end of input")
     end
     return cache[key]
   else
@@ -114,7 +114,7 @@ function to_rule(str::AbstractString)
   # not cached because I'm guessing startswith is probably faster
   (input, cache)->begin
     if startswith(input, str)
-      (str, input[length(str)+1:end])
+      (str, input[endof(str)+1:end])
     end
   end
 end
@@ -175,7 +175,7 @@ function to_rule(::Type{Type{:macrocall}}, ::Type{Type{Symbol("@r_str")}}, str::
   (input, cache)->cache_rule(sym, (input, cache)->begin
     local m = match(re, input)
     m == nothing && return
-    (m.captures[1], input[length(m.match)+1:end])
+    (m.captures[1], input[endof(m.match)+1:end])
   end, input, cache)
 end
 
@@ -323,7 +323,7 @@ macro rule(assignment::Expr)
   local value_fn = to_rule(value_expr)
   :(@Base.__doc__ function $(esc(name)){T<:AbstractString}(input::T, cache::Cache=Cache())
       if !isa(input, SubString)
-	input = SubString(input, 1, length(input))
+	input = SubString(input, 1, endof(input))
       end
       local sym = Symbol($(string(name)))
       cache_rule(sym, $value_fn, input, cache)
@@ -352,7 +352,7 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
     # find the last index we tried to parse anything starting at, and all the
     # cache keys for the expressions we tried to parse there
     # FIXME plain strings aren't cached, so we'll miss them as keys
-    local last_index = 0
+    local last_index = endof(input)
     local last_keys = Symbol[]
     for pair ∈ cache
       if pair[1][2] < last_index
@@ -362,7 +362,7 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
         push!(last_keys, pair[1][1])
       end
     end
-    last_index = length(input) - last_index +1 # ugh, backwards 1-based indexing
+    last_index = endof(input) - last_index +1 # ugh, backwards 1-based indexing
     # convert regex gensym keys to something more readable, remove other
     # gensyms, and convert everything to strings
     last_keys = map(x->begin
@@ -378,12 +378,12 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
     end, last_keys)
     filter!(x->(x != nothing), last_keys)
     # translate the index into line and column and get the text on the line
-    local before = split(input[1:last_index-1], r"\r\n|\n\r|\n|\r")
-    local after = replace(input[last_index:end], r"[\r\n].*", "")
+    local before = split(input[1:last_index], r"\r\n|\n\r|\n|\r")
+    local after = replace(input[last_index+1:end], r"[\r\n].*", "")
     local line_num = length(before)
     local column_num = length(before[end])
     local line = before[end] * after
-    local message = "On line $line_num, at column $column_num:\n$line\n" * " "^Int(clamp(column_num-1, 0, Inf)) * "^ here\nexpected one of the following: " * join(last_keys, ", ") * "\n"
+    local message = "On line $line_num, at column $column_num (byte $last_index):\n$line\n" * " "^Int(clamp(column_num-1, 0, Inf)) * "^ here\nexpected one of the following: " * join(last_keys, ", ") * "\n"
     debug && print(message)
     throw(ParseError(message))
   else # parse succeeded

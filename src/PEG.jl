@@ -378,10 +378,10 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
     end, last_keys)
     filter!(x->(x != nothing), last_keys)
     # translate the index into line and column and get the text on the line
-    local before = split(input[1:last_index], r"\r\n|\n\r|\n|\r")
-    local after = replace(input[last_index+1:end], r"[\r\n].*", "")
+    local before = split(input[1:last_index-1], r"\r\n|\n\r|\n|\r")
+    local after = replace(input[last_index:end], r"[\r\n].*", "")
     local line_num = length(before)
-    local column_num = length(before[end])
+    local column_num = length(before[end]) + 1
     local line = before[end] * after
     local message = "On line $line_num, at column $column_num (byte $last_index):\n$line\n" * " "^Int(clamp(column_num-1, 0, Inf)) * "^ here\nexpected one of the following: " * join(last_keys, ", ") * "\n"
     debug && print(message)

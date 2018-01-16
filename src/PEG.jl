@@ -18,8 +18,9 @@ Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 * Terminals: `r"regex"`, `"string"`
   * Extra regex flags: `p` is for punctuation, and eats whitespace (`\s*`)
     after the match; `w` is for word, and implies `p`, but also makes sure
-    match boundaries are word boundaries (`\b`). Values passed to semantics
-    functions exclude eaten whitespace.
+    match boundaries are word boundaries (`\b`); `h` modifies `p` and `w` to
+    eat only horizontal whitespace (`\h`). Values passed to semantics functions
+    exclude eaten whitespace.
 * Semantics: `expression >> unary_function` (like ParserCombinator's `|>`)
   * or `expression >>> nary_function` to interpolate args (like
     ParserCombinator's `>`).
@@ -47,7 +48,7 @@ using PEG
 @rule parens = r"\("p & choice & r"\)"p
 @rule nonterminal = r"\pL\w+"w
 @rule terminal = regex | string & r"\s*"
-@rule regex = r"\br" & string & r"[impswx]*\s*"
+@rule regex = r"\br" & string & r"[himpswx]*\s*"
 @rule string = r"\"(\\.|[^\"])*\""
 @rule julia_function = # left as an exercise ;)
 ```
@@ -169,7 +170,9 @@ function to_rule(::Type{Type{:macrocall}}, ::Type{Type{Symbol("@r_str")}}, str::
   local w
   flags, w = remove_re_flag(flags, 'w')
   p = p || w
-  str = "^" * (w ? "\\b" : "") * "($str)" * (w ? "\\b" : "") * (p ? "\\s*" : "")
+  local h
+  flags, h = remove_re_flag(flags, 'h')
+  str = "^" * (w ? "\\b" : "") * "($str)" * (w ? "\\b" : "") * (p ? (h ? "\\h*" : "\\s*") : "")
   re = Regex(str, flags)
   local sym = gensym(string(re))
   (input, cache)->cache_rule(sym, (input, cache)->begin

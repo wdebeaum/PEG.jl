@@ -13,7 +13,7 @@ using PEG
 @rule parens = r"\("p & choice & r"\)"p
 @rule nonterminal = r"\pL\w+"w
 @rule terminal = regex | string & r"\s*"
-@rule regex = r"\br" & string & r"[impswx]*\s*"
+@rule regex = r"\br" & string & r"[himpswx]*\s*"
 @rule string = r"\"(\\.|[^\"])*\""
 @rule julia_function = nonterminal
 using Base.Test

@@ -16,7 +16,7 @@ end
 @rule mul = num & (r"[/*]"p & num)[*] >> do_op
 @rule add = mul & (r"[+-]"p & mul)[*] >> do_op
 
-using Base.Test
+using Test
 @test add("2 + 3 * 5") == (17, "")
 @test add("2 * 3 + 5") == (11, "")
 @test add("(2 + 3) * 5") == (25, "")

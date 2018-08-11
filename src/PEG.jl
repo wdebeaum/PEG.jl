@@ -1,6 +1,6 @@
-VERSION >= v"0.4" && __precompile__()
+__precompile__()
 
-doc"""
+@doc raw"""
 Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 
 * Rules: `@rule name = expression`
@@ -8,7 +8,8 @@ Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 * Sequence: infix `&`
 * Positive lookahead: prefix `+`
 * Negative lookahead: prefix `-`
-* Option (zero or one time): postfix `[?]` (≡ `[0:1]`)
+* Option (zero or one time): postfix `[:?]` (≡ `[0:1]`)
+  * (note that [?] won't work in Julia >= 1.0 per JuliaLang/julia#22712)
 * Zero or more times: postfix `[*]` (≡ `[0:end]`)
 * One or more times: postfix `[+]` (≡ `[1:end]`)
 * Exactly `m` times: postfix `[m]` (≡ `[m:m]`) (where m is an integer)
@@ -37,12 +38,12 @@ using PEG
 @rule grammar = "using PEG\n" & rule[*]
 @rule rule = r"@rule"p & nonterminal & r"="p & choice
 @rule choice = seq & (r"\|"p & seq)[*]
-@rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[?]
+@rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[:?]
 @rule item = lookahead | counted
 @rule lookahead = r"\("p & (r"[+-]"p) & seq & r"\)"p
-@rule counted = single & (count)[?]
-@rule count = range | r"\["p & (r"[\?\*\+]"p) & r"]"p
-@rule range = r"\["p & integer & (r":"p & (integer | r"end"w))[?] & r"]"p
+@rule counted = single & (count)[:?]
+@rule count = range | r"\["p & (":?" | r"[\*\+]"p) & r"]"p
+@rule range = r"\["p & integer & (r":"p & (integer | r"end"w))[:?] & r"]"p
 @rule integer = r"\d+"w
 @rule single = parens | terminal | nonterminal
 @rule parens = r"\("p & choice & r"\)"p
@@ -56,8 +57,8 @@ using PEG
 Each rule defines a parsing function with the following signature:
 
 ```julia
-nonterminal{T<:AbstractString}(input::T, cache=PEG.Cache())::
-  Union{Void,Tuple{Any,SubString}}
+nonterminal(input::T, cache=PEG.Cache()) where T <: AbstractString
+  ::Union{Nothing,Tuple{Any,SubString}}
 ```
 
 The `Any` part of the return value is the abstract syntax tree, while the
@@ -89,20 +90,20 @@ A Cache maps from (rule name or gensym, input string length remaining) to
 either nothing or (parsed value, remaining input substring) (which is what rule
 functions return).
 """
-const Cache = Dict{Tuple{Symbol,Int},Union{Void,Tuple{Any,SubString}}}
+const Cache = Dict{Tuple{Symbol,Int},Union{Nothing,Tuple{Any,SubString}}}
 
 function cache_rule(sym::Symbol, fn::Function, input::SubString, cache::Cache)
-  local key = (sym, endof(input))
+  local key = (sym, lastindex(input))
   haskey(cache, key) && return cache[key]
   if debug
-    if !ismatch(r"^##", string(sym))
+    if !occursin(r"^##", string(sym))
       println(" "^length(stacktrace()) * string(sym))
     end
     cache[key] = fn(input, cache)
     if cache[key] != nothing
-      println(" "^length(stacktrace()) * "$sym matched " * string(endof(input)) * ":" * string(nextind(cache[key][2],endof(cache[key][2]))) * " bytes from end of input, returning " * string(cache[key][1]))
+      println(" "^length(stacktrace()) * "$sym matched " * string(lastindex(input)) * ":" * string(nextind(cache[key][2],lastindex(cache[key][2]))) * " bytes from end of input, returning " * string(cache[key][1]))
 #    else
-#      println(" "^length(stacktrace()) * string(sym) * " failed to match " * string(endof(input)) * " bytes from end of input")
+#      println(" "^length(stacktrace()) * string(sym) * " failed to match " * string(lastindex(input)) * " bytes from end of input")
     end
     return cache[key]
   else
@@ -115,7 +116,7 @@ function to_rule(str::AbstractString)
   # not cached because I'm guessing startswith is probably faster
   (input, cache)->begin
     if startswith(input, str)
-      (str, input[nextind(str,endof(str)):end])
+      (str, input[nextind(str,lastindex(str)):end])
     end
   end
 end
@@ -133,13 +134,15 @@ function to_rule(sym::Symbol)
   # module instead of in the caller's module.
 end
 
-to_rule(expr::Expr) = to_rule(Type{expr.head}, expr.args...)
-to_rule(head::Union{Type{Type{:call}},Type{Type{:macrocall}}}, name::Symbol, args...) =
-  to_rule(head, Type{name}, args...)
+to_rule(expr::Expr) = to_rule(Val(expr.head), expr.args...)
+to_rule(head::Val{:call}, name::Symbol, args...) =
+  to_rule(head, Val(name), args...)
+to_rule(head::Val{:macrocall}, name::Symbol, source::LineNumberNode, args...) =
+  to_rule(head, Val(name), args...)
 to_rule(head, args...) = error("can't convert $head expression to PEG rule; args=$args")
 
 # variant of to_rule(::Symbol) for qualified rule references
-to_rule(::Type{Type{:.}}, args...) =
+to_rule(::Val{:.}, args...) =
   :((input, cache) -> $(esc(Expr(:., args...)))(input, cache))
 
 """
@@ -147,9 +150,9 @@ to_rule(::Type{Type{:.}}, args...) =
 
 Return (a copy of) regex flags with flag removed, and a boolean indicating whether the flag was there in the first place.
 """
-function remove_re_flag{T<:AbstractString}(flags::T, flag::Char)
-  local i = search(flags, flag)
-  if i == 0
+function remove_re_flag(flags::T, flag::Char) where T <: AbstractString
+  local i = findfirst(isequal(flag), flags)
+  if i == nothing
     (flags, false)
   else
     (flags[1:prevind(flags, i)] * flags[nextind(flags, i):end], true)
@@ -157,7 +160,7 @@ function remove_re_flag{T<:AbstractString}(flags::T, flag::Char)
 end
 
 # terminal r""
-function to_rule(::Type{Type{:macrocall}}, ::Type{Type{Symbol("@r_str")}}, str::String, flags...)
+function to_rule(::Val{:macrocall}, ::Val{Symbol("@r_str")}, str::String, flags...)
   if length(flags) == 0
     flags = ""
   else
@@ -178,18 +181,18 @@ function to_rule(::Type{Type{:macrocall}}, ::Type{Type{Symbol("@r_str")}}, str::
   (input, cache)->cache_rule(sym, (input, cache)->begin
     local m = match(re, input)
     m == nothing && return
-    (m.captures[1], input[nextind(m.match,endof(m.match)):end])
+    (m.captures[1], input[nextind(m.match,lastindex(m.match)):end])
   end, input, cache)
 end
 
 # fn[m:n]
-function to_rule(::Type{Type{:ref}}, fn, range::Expr)
+function to_rule(::Val{:ref}, fn, range::Expr)
   fn = to_rule(fn)
-  range.head == :(:) ||
+  (range.head == :call && range.args[1] == :(:)) ||
     error("can't convert non-range ref expression to PEG rule: $range")
   local m
   local n
-  m, n = range.args
+  m, n = range.args[2:3]
   n == :end && (n = Inf)
   local sym = gensym("[$m:$n]")
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
@@ -209,14 +212,15 @@ function to_rule(::Type{Type{:ref}}, fn, range::Expr)
 end
 
 # defined in terms of the above method
-to_rule(::Type{Type{:ref}}, fn, n::Int) = to_rule(Type{:ref}, fn,:($n:$n))
-to_rule(::Type{Type{:ref}}, fn, n::Symbol) = to_rule(Type{:ref}, fn, Type{n})
-to_rule(::Type{Type{:ref}}, fn, ::Type{Type{:?}}) = to_rule(Type{:ref}, fn,:(0:1))
-to_rule(::Type{Type{:ref}}, fn, ::Type{Type{:*}}) = to_rule(Type{:ref}, fn,:(foo[0:end]).args[2])
-to_rule(::Type{Type{:ref}}, fn, ::Type{Type{:+}}) = to_rule(Type{:ref}, fn,:(foo[1:end]).args[2])
+to_rule(::Val{:ref}, fn, n::Int) = to_rule(Val(:ref), fn,:($n:$n))
+to_rule(::Val{:ref}, fn, n::Symbol) = to_rule(Val(:ref), fn, Val(n))
+to_rule(::Val{:ref}, fn, n::QuoteNode) = to_rule(Val(:ref), fn, Val(n.value))
+to_rule(::Val{:ref}, fn, ::Val{:?}) = to_rule(Val(:ref), fn,:(0:1))
+to_rule(::Val{:ref}, fn, ::Val{:*}) = to_rule(Val(:ref), fn,:(foo[0:end]).args[2])
+to_rule(::Val{:ref}, fn, ::Val{:+}) = to_rule(Val(:ref), fn,:(foo[1:end]).args[2])
 
 # positive lookahead
-function to_rule(::Type{Type{:call}}, ::Type{Type{:+}}, fn)
+function to_rule(::Val{:call}, ::Val{:+}, fn)
   fn = to_rule(fn)
   # not cached here because it's already cached in fn
   :((input, cache)->begin
@@ -226,7 +230,7 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:+}}, fn)
 end
 
 # negative lookahead
-function to_rule(::Type{Type{:call}}, ::Type{Type{:-}}, fn)
+function to_rule(::Val{:call}, ::Val{:-}, fn)
   fn = to_rule(fn)
   # not cached here because it's already cached in fn
   :((input, cache)->begin
@@ -246,7 +250,7 @@ function flatten_op(x::Expr, op::Symbol)
 end
 
 # sequence
-function to_rule(::Type{Type{:call}}, ::Type{Type{:&}}, a, b)
+function to_rule(::Val{:call}, ::Val{:&}, a, b)
   local seq = map(to_rule, [flatten_op(a, :&); b])
   local sym = gensym(:&)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
@@ -265,11 +269,11 @@ end
 
 "Singleton value that semantics functions may return to cause the parsing
 expression they were called from to fail, e.g. `return Failure()`."
-type Failure
+struct Failure
 end
 
 # semantics
-function to_rule(::Type{Type{:call}}, ::Type{Type{:>>}}, pe, fn)
+function to_rule(::Val{:call}, ::Val{:>>}, pe, fn)
   pe = to_rule(pe)
   local sym = gensym(:>>)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
@@ -283,7 +287,7 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:>>}}, pe, fn)
   end, input, cache))
 end
 
-function to_rule(::Type{Type{:call}}, ::Type{Type{:>>>}}, pe, fn)
+function to_rule(::Val{:call}, ::Val{:>>>}, pe, fn)
   pe = to_rule(pe)
   local sym = gensym(:>>>)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
@@ -298,7 +302,7 @@ function to_rule(::Type{Type{:call}}, ::Type{Type{:>>>}}, pe, fn)
 end
 
 # choice
-function to_rule(::Type{Type{:call}}, ::Type{Type{:|}}, a, b)
+function to_rule(::Val{:call}, ::Val{:|}, a, b)
   local choice = map(to_rule, [flatten_op(a, :|); b])
   local sym = gensym(:|)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
@@ -324,9 +328,9 @@ macro rule(assignment::Expr)
   local value_expr
   name, value_expr = assignment.args
   local value_fn = to_rule(value_expr)
-  :(@Base.__doc__ function $(esc(name)){T<:AbstractString}(input::T, cache::Cache=Cache())
+  :(@Base.__doc__ function $(esc(name))(input::T, cache::Cache=Cache()) where T <: AbstractString
       if !isa(input, SubString)
-	input = SubString(input, 1, endof(input))
+	input = SubString(input, 1, lastindex(input))
       end
       local sym = Symbol($(string(name)))
       cache_rule(sym, $value_fn, input, cache)
@@ -348,14 +352,14 @@ ways:
 * When `whole=true`, parsing only succeeds if the whole input is consumed, i.e.
   the second value in the tuple that `rule` returns is `""`.
 """
-function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
+function parse_next(rule::Function, input::T; whole=false) where T <: AbstractString
   local cache = Cache()
   local m = rule(input, cache)
   if m == nothing || (whole && m[2] != "") # failed to parse
     # find the last index we tried to parse anything starting at, and all the
     # cache keys for the expressions we tried to parse there
     # FIXME plain strings aren't cached, so we'll miss them as keys
-    local last_index = nextind(input,endof(input)) # start off the end of input
+    local last_index = nextind(input,lastindex(input)) # start off the end of input
     local last_keys = Symbol[]
     for pair ∈ cache
       if pair[1][2] < last_index
@@ -365,7 +369,7 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
         push!(last_keys, pair[1][1])
       end
     end
-    last_index = nextind(input,endof(input)) - last_index # ugh, backwards 1-based indexing
+    last_index = nextind(input,lastindex(input)) - last_index # ugh, backwards 1-based indexing
     # convert regex gensym keys to something more readable, remove other
     # gensyms, and convert everything to strings
     last_keys = map(x->begin
@@ -373,7 +377,7 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
       local m = match(r"^##(r[^#]+)#\d+$", s)
       if m != nothing
 	m.captures[1]
-      elseif ismatch(r"^##", s)
+      elseif occursin(r"^##", s)
 	nothing
       else
 	s
@@ -382,13 +386,13 @@ function parse_next{T<:AbstractString}(rule::Function, input::T; whole=false)
     filter!(x->(x != nothing), last_keys)
     # translate the index into line and column and get the text on the line
     local before = split(input[1:prevind(input,last_index)], r"\r\n|\n\r|\n|\r")
-    local after = replace(input[last_index:end], r"[\r\n].*", "")
+    local after = replace(input[last_index:end], r"[\r\n].*" => "")
     local line_num = length(before)
     local column_num = length(before[end]) + 1
     local line = before[end] * after
     local message = "On line $line_num, at column $column_num (byte $last_index):\n$line\n" * " "^Int(clamp(column_num-1, 0, Inf)) * "^ here\nexpected one of the following: " * join(last_keys, ", ") * "\n"
     debug && print(message)
-    throw(ParseError(message))
+    throw(Meta.ParseError(message))
   else # parse succeeded
     m[1]
   end

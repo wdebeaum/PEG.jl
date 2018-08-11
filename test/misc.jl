@@ -1,12 +1,12 @@
 using PEG
-using Base.Test
+using Test
 
 function parse_fails_at(rule, input)
   try
     parse_whole(rule, input)
     "parse succeeded!"
   catch err
-    isa(err, ParseError) || rethrow()
+    isa(err, Meta.ParseError) || rethrow()
     m = match(r"^On line \d+, at column \d+ \(byte (\d+)\):", err.msg)
     m == nothing && rethrow()
     parse(Int, m.captures[1])

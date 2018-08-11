@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.org/wdebeaum/PEG.jl.png)](https://travis-ci.org/wdebeaum/PEG.jl)
 
-[![PEG](http://pkg.julialang.org/badges/PEG_0.6.svg)](http://pkg.julialang.org/?pkg=PEG&ver=0.6)
+[![PEG](http://pkg.julialang.org/badges/PEG_0.7.svg)](http://pkg.julialang.org/?pkg=PEG&ver=0.7)
 
 # PEG
 
@@ -13,7 +13,8 @@ via a macro and abuse of Julia syntax.
 * Sequence: infix `&`
 * Positive lookahead: prefix `+`
 * Negative lookahead: prefix `-`
-* Option (zero or one time): postfix `[?]` (≡ `[0:1]`)
+* Option (zero or one time): postfix `[:?]` (≡ `[0:1]`)
+  * (note that [?] won't work in Julia >= 1.0 per JuliaLang/julia#22712)
 * Zero or more times: postfix `[*]` (≡ `[0:end]`)
 * One or more times: postfix `[+]` (≡ `[1:end]`)
 * Exactly `m` times: postfix `[m]` (≡ `[m:m]`) (where m is an integer)
@@ -42,12 +43,12 @@ using PEG
 @rule grammar = "using PEG\n" & rule[*]
 @rule rule = r"@rule"p & nonterminal & r"="p & choice
 @rule choice = seq & (r"\|"p & seq)[*]
-@rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[?]
+@rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[:?]
 @rule item = lookahead | counted
 @rule lookahead = r"\("p & (r"[+-]"p) & seq & r"\)"p
-@rule counted = single & (count)[?]
-@rule count = range | r"\["p & (r"[\?\*\+]"p) & r"]"p
-@rule range = r"\["p & integer & (r":"p & (integer | r"end"w))[?] & r"]"p
+@rule counted = single & (count)[:?]
+@rule count = range | r"\["p & (":?" | r"[\*\+]"p) & r"]"p
+@rule range = r"\["p & integer & (r":"p & (integer | r"end"w))[:?] & r"]"p
 @rule integer = r"\d+"w
 @rule single = parens | terminal | nonterminal
 @rule parens = r"\("p & choice & r"\)"p
@@ -61,8 +62,8 @@ using PEG
 Each rule defines a parsing function with the following signature:
 
 ```julia
-nonterminal{T<:AbstractString}(input::T, cache=PEG.Cache())::
-  Union{Void,Tuple{Any,SubString}}
+nonterminal(input::T, cache=PEG.Cache()) where T <: AbstractString
+  ::Union{Nothing,Tuple{Any,SubString}}
 ```
 
 The `Any` part of the return value is the abstract syntax tree, while the
@@ -86,7 +87,7 @@ PEG...
   * have `Empty(x)`/`@e_str`. Use semantics functions to discard values.
   * have `Dot()`. Use `r"."`.
   * have `Eos()`. Use `parse_whole`.
-  * parse streams. Use `open(x->parse_whole(rule, readstring(x)), args...)`.
+  * parse streams. Use `open(x->parse_whole(rule, read(x, String)), args...)`.
   * include parsers for two random languages.
 * has nicer syntax:
   * Operator precedence makes sense. Tight to loose, the operators are: postfix
@@ -97,7 +98,7 @@ PEG...
       (x->f(x) | bar)`, so you might want to write `foo >> (x->f(x)) | bar`
       or `(foo >> x->f(x)) | bar` instead.
   * PC's `Plus(x)` and `Star(x)` become actual plusses and stars: `x[+]` and
-    `x[*]`. And PEG has `x[?]` too.
+    `x[*]`. And PEG has `x[:?]` too.
   * `Equal`/`@e_str` and `Pattern`/`@p_str` are unneccessary, just use bare
     strings and regexen (with extra flags).
 * does not require mutual recursion loops to be broken with `Delayed()`.

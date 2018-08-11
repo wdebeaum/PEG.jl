@@ -1,5 +1,5 @@
 using PEG
-using Base.Test
+using Test
 
 include("./calculator.jl")
 include("./meta.jl")

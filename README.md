@@ -101,3 +101,30 @@ PEG...
   trampoline to "interpret" them. They're just plain functions you can call
   directly.
 
+## Migrating from PEG 0.2 to PEG 1.0
+
+PEG 0.2 works with julia 0.6, while PEG 1.0 works with julia 1.0 (and julia
+0.7). Julia 1.0 has a number of differences from julia 0.7 that required some
+changes to PEG, which will in turn require some minor syntactic changes to any
+grammars written with PEG 0.2 if you want to use them with PEG 1.0/julia 1.0.
+
+* change `>>` to `|>`
+* change `>>>` to `>`
+* change `|` to `,`
+  * Note that this also makes it so you don't have to put parens around your
+    lambda expressions.
+* change `[?]` to `[:?]`
+
+There are some other changes outside the grammar syntax as well:
+
+* If you were doing this to parse a stream as previously suggested:
+  * `open(x->parse_whole(rule, readstring(x)), args...)`
+* now you should do this instead:
+  * `open(x->parse_whole(rule, read(x, String)), args...)`
+* change `Void` to `Nothing`
+* change `ParseError` to `Meta.ParseError`
+
+Also note that `PEG.Failure` is now an immutable type (`struct`). That
+shouldn't really matter because it has no fields, but it is still technically a
+visible change; `isbits(PEG.Failure())` is now `true` where before it was
+`false`.

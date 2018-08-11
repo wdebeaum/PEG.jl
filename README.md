@@ -9,7 +9,7 @@ Define a
 via a macro and abuse of Julia syntax.
 
 * Rules: `@rule name = expression`
-* Choice: infix `|`
+* Choice: infix `,`
 * Sequence: infix `&`
 * Positive lookahead: prefix `+`
 * Negative lookahead: prefix `-`
@@ -27,9 +27,8 @@ via a macro and abuse of Julia syntax.
     match boundaries are word boundaries (`\b`); `h` modifies `p` and `w` to
     eat only horizontal whitespace (`\h`). Values passed to semantics functions
     exclude eaten whitespace.
-* Semantics: `expression >> unary_function` (like ParserCombinator's `|>`)
-  * or `expression >>> nary_function` to interpolate args (like
-    ParserCombinator's `>`).
+* Semantics: `expression |> unary_function` (like ParserCombinator)
+  * or `expression > nary_function` to interpolate args.
   * Returning the special singleton value `PEG.Failure()` from a semantics
     function causes the parsing expression it's attached to to fail (return
     `nothing` instead of a tuple). Returning `nothing` from a semantics
@@ -42,18 +41,18 @@ Put another way:
 using PEG
 @rule grammar = "using PEG\n" & rule[*]
 @rule rule = r"@rule"p & nonterminal & r"="p & choice
-@rule choice = seq & (r"\|"p & seq)[*]
-@rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[:?]
-@rule item = lookahead | counted
+@rule choice = seq & (r","p & seq)[*]
+@rule seq = item & (r"&"p & item)[*] & (r"\|?>"p & julia_function)[:?]
+@rule item = lookahead , counted
 @rule lookahead = r"\("p & (r"[+-]"p) & seq & r"\)"p
 @rule counted = single & (count)[:?]
-@rule count = range | r"\["p & (":?" | r"[\*\+]"p) & r"]"p
-@rule range = r"\["p & integer & (r":"p & (integer | r"end"w))[:?] & r"]"p
+@rule count = range , r"\["p & (":?" , r"[\*\+]"p) & r"]"p
+@rule range = r"\["p & integer & (r":"p & (integer , r"end"w))[:?] & r"]"p
 @rule integer = r"\d+"w
-@rule single = parens | terminal | nonterminal
+@rule single = parens , terminal , nonterminal
 @rule parens = r"\("p & choice & r"\)"p
 @rule nonterminal = r"\pL\w+"w
-@rule terminal = regex | string & r"\s*"
+@rule terminal = regex , string & r"\s*"
 @rule regex = r"\br" & string & r"[himpswx]*\s*"
 @rule string = r"\"(\\.|[^\"])*\""
 @rule julia_function = # left as an exercise ;)
@@ -82,7 +81,7 @@ Call `PEG.setdebug!(false)` to turn it off again.
 PEG...
 
 * is simpler/less featureful. PEG does not:
-  * backtrack, except within regexen and to try the next choice (`|`). That is,
+  * backtrack, except within regexen and to try the next choice (`,`). That is,
     repetition `[]` is always greedy and possessive (to use PCRE terminology).
   * have `Empty(x)`/`@e_str`. Use semantics functions to discard values.
   * have `Dot()`. Use `r"."`.
@@ -91,12 +90,8 @@ PEG...
   * include parsers for two random languages.
 * has nicer syntax:
   * Operator precedence makes sense. Tight to loose, the operators are: postfix
-    `[]` (whatever is in the brackets), prefix `+`/`-`, infix `&`, `>>`/`>>>`,
-    `|`.
-    * One exception: `->` gobbles up everything after it, so it's best to
-      put lambdas in parens. E.g. `foo >> x->f(x) | bar` is actually `foo >>
-      (x->f(x) | bar)`, so you might want to write `foo >> (x->f(x)) | bar`
-      or `(foo >> x->f(x)) | bar` instead.
+    `[]` (whatever is in the brackets), prefix `+`/`-`, infix `&`, `|>`/`>`,
+    `,`.
   * PC's `Plus(x)` and `Star(x)` become actual plusses and stars: `x[+]` and
     `x[*]`. And PEG has `x[:?]` too.
   * `Equal`/`@e_str` and `Pattern`/`@p_str` are unneccessary, just use bare

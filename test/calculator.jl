@@ -11,10 +11,9 @@ function do_op(x)
   v
 end
 
-@rule num = r"\d+"w >> (x->parse(Int, x)) | r"\("p & add & r"\)"p >> x->x[2]
-# parens required here ^                ^ to prevent fn from gobbling line
-@rule mul = num & (r"[/*]"p & num)[*] >> do_op
-@rule add = mul & (r"[+-]"p & mul)[*] >> do_op
+@rule num = r"\d+"w |> x->parse(Int, x) , r"\("p & add & r"\)"p |> x->x[2]
+@rule mul = num & (r"[/*]"p & num)[*] |> do_op
+@rule add = mul & (r"[+-]"p & mul)[*] |> do_op
 
 using Test
 @test add("2 + 3 * 5") == (17, "")

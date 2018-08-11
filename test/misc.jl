@@ -42,7 +42,7 @@ end
 @test parse_fails_at(notabc, "abcargh") == 1
 
 # interpolating semantics
-@rule interp = r"\d+" & r"[a-z]+" & r"\d+" >>> (a,b,c) -> b * Base.string(parse(Int, a) + parse(Int, c))
+@rule interp = r"\d+" & r"[a-z]+" & r"\d+" > (a,b,c) -> b * Base.string(parse(Int, a) + parse(Int, c))
 @test parse_whole(interp, "123abc456") == "abc579"
 
 # multibyte characters in input and rule ("∈" is 3 bytes)

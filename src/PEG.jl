@@ -4,7 +4,7 @@ __precompile__()
 Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
 
 * Rules: `@rule name = expression`
-* Choice: infix `|`
+* Choice: infix `,`
 * Sequence: infix `&`
 * Positive lookahead: prefix `+`
 * Negative lookahead: prefix `-`
@@ -22,9 +22,8 @@ Define a Parsing Expression Grammar via a macro and abuse of Julia syntax.
     match boundaries are word boundaries (`\b`); `h` modifies `p` and `w` to
     eat only horizontal whitespace (`\h`). Values passed to semantics functions
     exclude eaten whitespace.
-* Semantics: `expression >> unary_function` (like ParserCombinator's `|>`)
-  * or `expression >>> nary_function` to interpolate args (like
-    ParserCombinator's `>`).
+* Semantics: `expression |> unary_function` (like ParserCombinator)
+  * or `expression > nary_function` to interpolate args.
   * Returning the special singleton value `PEG.Failure()` from a semantics
     function causes the parsing expression it's attached to to fail (return
     `nothing` instead of a tuple). Returning `nothing` from a semantics
@@ -37,18 +36,18 @@ Put another way:
 using PEG
 @rule grammar = "using PEG\n" & rule[*]
 @rule rule = r"@rule"p & nonterminal & r"="p & choice
-@rule choice = seq & (r"\|"p & seq)[*]
-@rule seq = item & (r"&"p & item)[*] & (r">>>?"p & julia_function)[:?]
-@rule item = lookahead | counted
+@rule choice = seq & (r","p & seq)[*]
+@rule seq = item & (r"&"p & item)[*] & (r"\|?>"p & julia_function)[:?]
+@rule item = lookahead , counted
 @rule lookahead = r"\("p & (r"[+-]"p) & seq & r"\)"p
 @rule counted = single & (count)[:?]
-@rule count = range | r"\["p & (":?" | r"[\*\+]"p) & r"]"p
-@rule range = r"\["p & integer & (r":"p & (integer | r"end"w))[:?] & r"]"p
+@rule count = range , r"\["p & (":?" , r"[\*\+]"p) & r"]"p
+@rule range = r"\["p & integer & (r":"p & (integer , r"end"w))[:?] & r"]"p
 @rule integer = r"\d+"w
-@rule single = parens | terminal | nonterminal
+@rule single = parens , terminal , nonterminal
 @rule parens = r"\("p & choice & r"\)"p
 @rule nonterminal = r"\pL\w+"w
-@rule terminal = regex | string & r"\s*"
+@rule terminal = regex , string & r"\s*"
 @rule regex = r"\br" & string & r"[himpswx]*\s*"
 @rule string = r"\"(\\.|[^\"])*\""
 @rule julia_function = # left as an exercise ;)
@@ -273,9 +272,9 @@ struct Failure
 end
 
 # semantics
-function to_rule(::Val{:call}, ::Val{:>>}, pe, fn)
+function to_rule(::Val{:call}, ::Val{:|>}, pe, fn)
   pe = to_rule(pe)
-  local sym = gensym(:>>)
+  local sym = gensym(:|>)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
     local m = ($pe)(input, cache)
     m == nothing && return nothing
@@ -287,9 +286,9 @@ function to_rule(::Val{:call}, ::Val{:>>}, pe, fn)
   end, input, cache))
 end
 
-function to_rule(::Val{:call}, ::Val{:>>>}, pe, fn)
+function to_rule(::Val{:call}, ::Val{:>}, pe, fn)
   pe = to_rule(pe)
-  local sym = gensym(:>>>)
+  local sym = gensym(:>)
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
     local m = ($pe)(input, cache)
     m == nothing && return nothing
@@ -302,9 +301,9 @@ function to_rule(::Val{:call}, ::Val{:>>>}, pe, fn)
 end
 
 # choice
-function to_rule(::Val{:call}, ::Val{:|}, a, b)
-  local choice = map(to_rule, [flatten_op(a, :|); b])
-  local sym = gensym(:|)
+function to_rule(::Val{:tuple}, args...)
+  local choice = map(to_rule, args)
+  local sym = gensym(",")
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
     local item
     for item ∈ [$(choice...)]

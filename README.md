@@ -101,6 +101,29 @@ PEG...
   trampoline to "interpret" them. They're just plain functions you can call
   directly.
 
+## Versus [StringParserPEG](https://github.com/vonDonnerstein/StringParserPEG.jl)
+
+PEG...
+
+* is about half the size, though they're both pretty small.
+* does not put the whole grammar in a string and force you to deal with
+  multiple levels of escaping if the language you're parsing involves
+  backslashes or quotes.
+* allows regex flags (and adds new ones).
+* does not have syntax for suppressing values like `-(rule)`. Use semantics
+  functions to discard values.
+* has semantics functions that are easier to deal with:
+  * They only take the list of children, no other arguments.
+  * Positions of children in that list are consistent; a rule like `foo bar[*]
+    baz` that matches zero `bar`s will pass child values like `[foo, [], baz]`,
+    not `[foo, baz]`.
+  * They can return `nothing` as a value without causing the parse to fail.
+  * Function expressions are evaluated in the scope of the caller of `@rule`,
+    not in the `PEG` module, so you don't have to prefix named functions
+    defined outside the grammar rule itself with `Main.` or whatever.
+  * The sequence operator `&` binds tighter than the semantics binding
+    operators `|>`/`>`, so you don't have to use as many parentheses.
+
 ## Migrating from PEG 0.2 to PEG 1.0
 
 PEG 0.2 works with julia 0.6, while PEG 1.0 works with julia 1.0 (and julia

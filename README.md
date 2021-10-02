@@ -106,6 +106,8 @@ PEG...
 PEG...
 
 * is about half the size, though they're both pretty small.
+* can produce parsers that are much faster and use less memory (see benchmark
+  below).
 * does not put the whole grammar in a string and force you to deal with
   multiple levels of escaping if the language you're parsing involves
   backslashes or quotes.
@@ -123,6 +125,34 @@ PEG...
     defined outside the grammar rule itself with `Main.` or whatever.
   * The sequence operator `&` binds tighter than the semantics binding
     operators `|>`/`>`, so you don't have to use as many parentheses.
+
+## JSON parsing benchmark
+
+I wrote the same PEG grammar for parsing JSON using both this PEG package and
+StringParserPEG. I made no real effort to optimize the grammars. I used
+[BenchmarkTools](https://github.com/JuliaCI/BenchmarkTools.jl) to test them
+against each other and against the hand-written (and presumably more optimized)
+JSON parser from [JSON.jl](https://github.com/JuliaIO/JSON.jl). I used a
+10,000-line JSON file from
+[Chevrotain](https://github.com/Chevrotain/chevrotain/blob/gh-pages/performance/samples/10K_json.js),
+and tested each of the three parsers repeatedly parsing that file (as a string)
+for 60 seconds. See [json-benchmark.jl](json-benchmark.jl) for the code I used,
+including both the grammars and the benchmarking code. Here are some of the
+results:
+
+| parser          | mean parsing time (ms) | memory estimate (MiB) |
+| --------------- | ---------------------: | --------------------: |
+| JSON            |                  3.262 |                  1.49 |
+| PEG             |                849.936 |                 62.53 |
+| StringParserPEG |               4635.000 |              11630.00 |
+
+Take all of this with a grain of salt. This isn't a great test because (a)
+these grammars don't really exercise some of the more interesting features of
+the PEG formalism, and (b) I put a lot less time and effort into these specific
+PEG grammars than presumably went into JSON.jl (they're less than 15 lines of
+code each!). But it does seem clear that while this PEG package isn't as
+efficient as a hand-written, optimized parser, it is much more efficient than
+StringParserPEG.
 
 ## Migrating from PEG 0.2 to PEG 1.0
 

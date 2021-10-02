@@ -1,7 +1,3 @@
-[![Build Status](https://travis-ci.org/wdebeaum/PEG.jl.png)](https://travis-ci.org/wdebeaum/PEG.jl)
-
-[![PEG](http://pkg.julialang.org/badges/PEG_0.7.svg)](http://pkg.julialang.org/?pkg=PEG&ver=0.7)
-
 # PEG
 
 Define a
@@ -181,3 +177,11 @@ Also note that `PEG.Failure` is now an immutable type (`struct`). That
 shouldn't really matter because it has no fields, but it is still technically a
 visible change; `isbits(PEG.Failure())` is now `true` where before it was
 `false`.
+
+## Status
+
+This package is not "unmaintained" or "outdated", it's just simple enough that
+maintenance isn't often required. So don't be discouraged if the last change to
+the code was several years ago.
+
+This version of PEG works with Julia 0.7 and 1.x.

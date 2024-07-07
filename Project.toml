@@ -1,7 +1,7 @@
 name = "PEG"
 uuid = "6f3530d0-67f3-4f49-9cad-5169515fb66b"
 authors = ["William de Beaumont <wdebeaum@gmail.com> and contributors"]
-version = "1.0.0"
+version = "1.0.1"
 
 [compat]
 julia = "0.7, 1"

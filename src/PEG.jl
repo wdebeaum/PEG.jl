@@ -238,6 +238,10 @@ function to_rule(::Val{:call}, ::Val{:-}, fn)
   end)
 end
 
+# negative lookahead over choice (convert multiple call args to tuple)
+to_rule(c::Val{:call}, m::Val{:-}, arg1, arg2, args...) =
+  to_rule(c, m, :($arg1, $arg2, $(args...)))
+
 "Given e.g. x=:(((a op b) op c) op d), return [a,b,c,d]."
 flatten_op(x, op::Symbol) = Any[x]
 function flatten_op(x::Expr, op::Symbol)

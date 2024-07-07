@@ -41,6 +41,17 @@ end
 @test parse_whole(notabc, "abdfoo") == [nothing, "abdfoo"]
 @test parse_fails_at(notabc, "abcargh") == 1
 
+# negative lookahead over choice
+@rule not_abc_or_def = -("abc", "def") & r"\w+"
+@test parse_whole(not_abc_or_def, "ab") == [nothing, "ab"]
+@test parse_whole(not_abc_or_def, "abd") == [nothing, "abd"]
+@test parse_whole(not_abc_or_def, "abdfoo") == [nothing, "abdfoo"]
+@test parse_fails_at(not_abc_or_def, "abcargh") == 1
+@test parse_whole(not_abc_or_def, "de") == [nothing, "de"]
+@test parse_whole(not_abc_or_def, "deg") == [nothing, "deg"]
+@test parse_whole(not_abc_or_def, "degfoo") == [nothing, "degfoo"]
+@test parse_fails_at(not_abc_or_def, "defargh") == 1
+
 # interpolating semantics
 @rule interp = r"\d+" & r"[a-z]+" & r"\d+" > (a,b,c) -> b * Base.string(parse(Int, a) + parse(Int, c))
 @test parse_whole(interp, "123abc456") == "abc579"

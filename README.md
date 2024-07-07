@@ -152,10 +152,10 @@ StringParserPEG.
 
 ## Migrating from PEG 0.2 to PEG 1.0
 
-PEG 0.2 works with julia 0.6, while PEG 1.0 works with julia 1.0 (and julia
+PEG 0.2 works with julia 0.6, while PEG 1.0 works with julia 1.x (and julia
 0.7). Julia 1.0 has a number of differences from julia 0.7 that required some
 changes to PEG, which will in turn require some minor syntactic changes to any
-grammars written with PEG 0.2 if you want to use them with PEG 1.0/julia 1.0.
+grammars written with PEG 0.2 if you want to use them with PEG 1.0/julia 1.x.
 
 * change `>>` to `|>`
 * change `>>>` to `>`

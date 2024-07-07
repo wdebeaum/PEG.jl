@@ -34,6 +34,15 @@ end
 @test parse_whole(abc, "abc") == [nothing, "abc"]
 @test parse_whole(abc, "abcfoo") == [nothing, "abcfoo"]
 
+# positive lookahead over choice
+@rule abc_or_def = +("abc", "def") & r"\w+"
+@test parse_fails_at(abc_or_def, "abdargh") == 1
+@test parse_whole(abc_or_def, "abc") == [nothing, "abc"]
+@test parse_whole(abc_or_def, "abcfoo") == [nothing, "abcfoo"]
+@test parse_fails_at(abc_or_def, "degargh") == 1
+@test parse_whole(abc_or_def, "def") == [nothing, "def"]
+@test parse_whole(abc_or_def, "deffoo") == [nothing, "deffoo"]
+
 # negative lookahead
 @rule notabc = -"abc" & r"\w+"
 @test parse_whole(notabc, "ab") == [nothing, "ab"]

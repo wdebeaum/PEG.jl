@@ -192,7 +192,7 @@ function to_rule(::Val{:ref}, fn, range::Expr)
   local m
   local n
   m, n = range.args[2:3]
-  n == :end && (n = Inf)
+  (n == :end || n == Expr(:end)) && (n = Inf)
   local sym = gensym("[$m:$n]")
   :((input, cache)->cache_rule($(Meta.quot(sym)), (input, cache)->begin
     local results = []

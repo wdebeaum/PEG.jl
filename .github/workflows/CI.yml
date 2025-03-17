@@ -18,20 +18,11 @@ jobs:
         arch:
           - x64
     steps:
-      - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
-      - uses: julia-actions/setup-julia@ee66464cb7897ffcc5322800f4b18d449794af30
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      - uses: actions/cache@d9747005de0f7240e5d35a68dca96b3f41b8b340
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
-      - uses: julia-actions/julia-buildpkg@f995fa4149fed4a8e9b95ba82f54cc107c1d832a
-      - uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
